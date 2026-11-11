@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AccessPatch — scan your store, fix the missing image descriptions</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#666; --line:#ddd; --bad:#b3261e; --warn:#8a5a00; --ok:#1b6b2f; --accent:#0b57d0; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); max-width:880px; margin:0 auto; padding:24px 16px 64px; line-height:1.5; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  h2 { font-size:1.15rem; margin:32px 0 8px; border-top:1px solid var(--line); padding-top:20px; }
+  p { margin:6px 0; }
+  .muted { color:var(--muted); font-size:.92rem; }
+  .price { font-size:1.1rem; font-weight:700; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=url], input[type=text] { flex:1; min-width:260px; padding:10px; font-size:1rem; border:1px solid var(--line); border-radius:6px; }
+  button { padding:10px 16px; font-size:1rem; border:1px solid var(--ink); background:var(--ink); color:#fff; border-radius:6px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--ink); }
+  button:disabled { opacity:.5; cursor:default; }
+  .status { padding:10px 12px; border:1px solid var(--line); border-radius:6px; background:#fafafa; margin:12px 0; }
+  .status.bad { border-color:var(--bad); background:#fdf3f2; }
+  .status.ok { border-color:var(--ok); background:#f2f8f3; }
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin:12px 0; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:12px 16px; min-width:140px; }
+  .card b { font-size:1.5rem; display:block; }
+  .card span { color:var(--muted); font-size:.9rem; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:.92rem; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#fafafa; }
+  code { font-size:.85rem; background:#f4f4f4; padding:1px 4px; border-radius:3px; word-break:break-all; }
+  .impact { font-weight:700; text-transform:capitalize; }
+  .impact.critical { color:var(--bad); }
+  .impact.serious { color:var(--warn); }
+  .impact.moderate, .impact.minor { color:var(--muted); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:.82rem; border:1px solid var(--line); }
+  .pill.generated { background:#eef4ff; }
+  .pill.approved { background:#e6f4ea; }
+  .pill.applied { background:#e6f4ea; font-weight:700; }
+  .pill.decorative, .pill.uncertain { background:#fafafa; color:var(--muted); }
+  .thumb { max-width:120px; max-height:80px; display:block; }
+  .hidden { display:none; }
+  footer { margin-top:40px; border-top:1px solid var(--line); padding-top:16px; }
+</style>
+</head>
+<body>
+
+<h1>AccessPatch</h1>
+<p class="muted">Working name. Checks a Shopify store the way a suing lawyer would, writes the missing image descriptions, and keeps a dated record of what was found and fixed.</p>
+<p><span class="price" id="priceLabel">$39/month</span> <span class="muted">— flat, one price. Weekly scan, AI alt text, dated fix report. No per-image charges.</span></p>
+
+<div class="status" id="configStatus">Checking setup…</div>
+
+<h2>1. Scan a store</h2>
+<p class="muted">Paste any storefront address. The scan reads the homepage in a real browser and reports what it finds. Nothing is changed on the store.</p>
+<div class="row">
+  <input type="url" id="scanUrl" placeholder="https://example-store.com" autocomplete="off">
+  <button id="scanBtn">Scan this store</button>
+</div>
+<div id="scanMsg" class="status hidden"></div>
+
+<div id="results" class="hidden">
+  <h2>2. What the scan found</h2>
+  <p id="scanMeta" class="muted"></p>
+  <div class="cards" id="countCards"></div>
+  <div id="violations"></div>
+  <h3>Images missing alt text</h3>
+  <p class="muted">Images with no alt attribute need a description. Images with empty alt (<code>alt=""</code>) are decorative on purpose — they are counted separately and never filled in automatically.</p>
+  <div id="missingAlt"></div>
+</div>
+
+<div id="altSection" class="hidden">
+  <h2>3. Write the missing descriptions</h2>
+  <p class="muted">An AI model reads each image and writes one plain sentence (about 125 characters). It never rewrites a description the merchant already wrote, and it never guesses — if it cannot tell what an image shows, it says so and the image stays in the review list.</p>
+  <div class="row">
+    <button id="altBtn">Write alt text for this scan</button>
+    <button id="approveAllBtn" class="secondary">Approve all</button>
+    <button id="csvBtn" class="secondary">Download fix file (CSV)</button>
+  </div>
+  <div id="altMsg" class="status hidden"></div>
+  <div id="fixes"></div>
+</div>
+
+<div id="paySection">
+  <h2>4. Subscribe — $39/month</h2>
+  <p class="muted">PayPal checkout (sandbox in this entry). Subscribing records the plan on this server; the weekly scan and auto-fix run once the app is connected to the store.</p>
+  <div id="payMsg" class="status hidden"></div>
+  <div class="row" id="planRow">
+    <button id="createPlanBtn" class="secondary">Create the $39/month plan in PayPal</button>
+  </div>
+  <div id="paypalBtns" style="margin-top:12px; max-width:420px;"></div>
+  <div id="subStatus"></div>
+</div>
+
+<h2>Fix report</h2>
+<p class="muted">Every scan and every fix, dated. Re-scan the same store after applying fixes and the report shows what is resolved, what is still there, and what is new.</p>
+<div id="report"></div>
+
+<footer>
+  <p class="muted"><strong>What this does, plainly:</strong> it finds the accessibility issues plaintiffs cite most, writes the missing image descriptions, and keeps a dated record of what was found and fixed. <strong>What it does not do:</strong> it does not promise any legal outcome. No automated check can catch every issue — a person using a keyboard and a screen reader is the full check, and the report says so. Issues that need a human (contrast, keyboard navigation, forms) are listed with the exact element and how to fix them; the app does not change theme code.</p>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentScanId = null;
+let cfg = null;
+
+function show(el, msg, kind) {
+  el.classList.remove('hidden');
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+function hide(el) { el.classList.add('hidden'); }
+
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  cfg = await r.json();
+  $('priceLabel').textContent = `$${cfg.priceUsdMonthly}/month`;
+  const parts = [];
+  parts.push(cfg.geminiConfigured ? 'Alt-text writing: ready.' : 'Alt-text writing: not configured yet (GEMINI_API_KEY).');
+  parts.push(cfg.paypalConfigured ? 'PayPal checkout: ready (sandbox).' : 'PayPal checkout: not configured yet (PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET).');
+  if (cfg.subscription) parts.push(`Subscription on file: ${cfg.subscription.status}${cfg.subscription.verified ? ' (verified with PayPal)' : ' (reported, not verified yet)'} — ${cfg.subscription.createdAt.slice(0, 10)}.`);
+  show($('configStatus'), parts.join(' '), cfg.paypalConfigured && cfg.geminiConfigured ? 'ok' : '');
+  renderPaySection();
+}
+
+function renderPaySection() {
+  hide($('payMsg'));
+  $('subStatus').innerHTML = '';
+  if (!cfg.paypalConfigured) {
+    show($('payMsg'), 'PayPal checkout is not configured yet. The server needs PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET (sandbox) before anyone can subscribe.', 'bad');
+    $('planRow').classList.add('hidden');
+    return;
+  }
+  if (!cfg.paypalPlanId) {
+    $('planRow').classList.remove('hidden');
+    return;
+  }
+  $('planRow').classList.add('hidden');
+  if (cfg.subscription) {
+    $('subStatus').innerHTML = `<p class="status ok">Subscribed — status: <b>${esc(cfg.subscription.status)}</b>${cfg.subscription.verified ? ' (verified with PayPal)' : ' (reported, not verified yet)'} · ${esc(cfg.subscription.createdAt)}</p>`;
+    return;
+  }
+  loadPaypalSdk();
+}
+
+function loadPaypalSdk() {
+  if (window.paypal) { renderPaypalButtons(); return; }
+  const s = document.createElement('script');
+  s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(cfg.paypalClientId)}&vault=true&intent=subscription`;
+  s.onload = renderPaypalButtons;
+  s.onerror = () => show($('payMsg'), 'PayPal checkout script did not load. Check the connection and reload.', 'bad');
+  document.head.appendChild(s);
+}
+
+function renderPaypalButtons() {
+  $('paypalBtns').innerHTML = '';
+  window.paypal.Buttons({
+    style: { shape: 'rect', color: 'gold', layout: 'vertical', label: 'subscribe' },
+    createSubscription: (data, actions) => actions.subscription.create({ plan_id: cfg.paypalPlanId }),
+    onApprove: async (data) => {
+      try {
+        const r = await fetch('/api/paypal/subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriptionId: data.subscriptionID }) });
+        const out = await r.json();
+        if (!r.ok) throw new Error(out.error || 'Server error');
+        show($('payMsg'), `Subscription recorded: ${out.status}${out.verified ? ' (verified with PayPal)' : ' (reported — will be verified when the server can reach PayPal)'}.`, 'ok');
+        await loadConfig();
+      } catch (e) { show($('payMsg'), 'Subscription created at PayPal but the server could not record it: ' + e.message, 'bad'); }
+    },
+    onError: (e) => show($('payMsg'), 'PayPal checkout error: ' + (e && e.message ? e.message : 'unknown error'), 'bad'),
+  }).render('#paypalBtns');
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+$('scanBtn').onclick = async () => {
+  const url = $('scanUrl').value.trim();
+  if (!url) { show($('scanMsg'), 'Paste a store URL first.', 'bad'); return; }
+  $('scanBtn').disabled = true;
+  show($('scanMsg'), 'Scanning… this takes up to a minute. The browser loads the homepage and checks it.');
+  try {
+    const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error || 'Scan failed');
+    currentScanId = out.scan.id;
+    hide($('scanMsg'));
+    renderScan(out);
+    loadReport();
+  } catch (e) {
+    show($('scanMsg'), e.message, 'bad');
+  } finally { $('scanBtn').disabled = false; }
+};
+
+function renderScan(out) {
+  const s = out.scan;
+  $('results').classList.remove('hidden');
+  $('altSection').classList.remove('hidden');
+  $('scanMeta').textContent = `${s.url} · scanned ${new Date(s.scannedAt).toLocaleString()} · ${s.isShopify ? 'looks like a Shopify store' : 'not detected as a Shopify store'} · HTTP ${s.httpStatus ?? '?'}`;
+  $('countCards').innerHTML = `
+    <div class="card"><b>${s.totalImages}</b><span>images on the page</span></div>
+    <div class="card"><b>${s.nullAlt}</b><span>missing alt text (no attribute)</span></div>
+    <div class="card"><b>${s.emptyAlt}</b><span>empty alt (decorative, left alone)</span></div>
+    <div class="card"><b>${s.violations.length}</b><span>violation types found</span></div>`;
+  let deltaHtml = '';
+  if (out.previousScanAt) {
+    const d = out.delta;
+    deltaHtml = `<p><b>Compared with the previous scan (${new Date(out.previousScanAt).toLocaleString()}):</b> ` +
+      `${d.resolved.length} resolved · ${d.stillPresent.length} still present · ${d.new.length} new.</p>` +
+      (d.resolved.length ? `<p class="muted">Resolved: ${d.resolved.map(v => esc(v.id)).join(', ')}</p>` : '') +
+      (d.new.length ? `<p class="muted">New: ${d.new.map(v => esc(v.id)).join(', ')}</p>` : '');
+  }
+  $('violations').innerHTML = deltaHtml + (s.violations.length ? `
+    <table><tr><th>Issue</th><th>Severity</th><th>Nodes</th><th>Where</th></tr>
+    ${s.violations.map(v => `<tr><td><b>${esc(v.id)}</b><br><span class="muted">${esc(v.help || v.description || '')}</span></td>
+      <td><span class="impact ${esc(v.impact || '')}">${esc(v.impact || 'n/a')}</span></td>
+      <td>${v.nodeCount}</td>
+      <td>${v.nodes.slice(0, 3).map(n => `<code>${esc(n.selector)}</code>`).join('<br>')}${v.nodes.length > 3 ? `<br><span class="muted">+${v.nodes.length - 3} more</span>` : ''}</td></tr>`).join('')}
+    </table>` : '<p>No violations found on this page.</p>');
+  const missing = s.images.filter(i => i.altStatus === 'null');
+  $('missingAlt').innerHTML = missing.length ? `
+    <table><tr><th>Image</th><th>Location</th></tr>
+    ${missing.map(i => `<tr><td><a href="${esc(i.src)}" target="_blank" rel="noopener">${esc(i.src.split('/').pop() || i.src)}</a><br><span class="muted">${esc(i.src.slice(0, 90))}</span></td><td><code>${esc(i.selector)}</code></td></tr>`).join('')}
+    </table>` : '<p>No images are missing alt text on this page.</p>';
+  $('fixes').innerHTML = '';
+  hide($('altMsg'));
+}
+
+$('altBtn').onclick = async () => {
+  if (!currentScanId) return;
+  $('altBtn').disabled = true;
+  show($('altMsg'), 'Writing alt text… each image is read and described. This takes a few seconds per image.');
+  try {
+    const r = await fetch(`/api/scans/${currentScanId}/alt-text`, { method: 'POST' });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error || 'Alt-text writing failed');
+    const done = out.results.filter(x => x.status === 'generated').length;
+    const dec = out.results.filter(x => x.status === 'decorative').length;
+    const unc = out.results.filter(x => x.status === 'uncertain').length;
+    const err = out.results.filter(x => x.status === 'error').length;
+    show($('altMsg'), `Wrote ${done} descriptions. ${dec} marked decorative (no description needed). ${unc} could not be described and stay in the review list. ${err} failed. ${out.skippedAlreadyDone} were already done.`, 'ok');
+    await loadFixes(currentScanId);
+    loadReport();
+  } catch (e) { show($('altMsg'), e.message, 'bad'); }
+  finally { $('altBtn').disabled = false; }
+};
+
+$('approveAllBtn').onclick = async () => {
+  if (!currentScanId) return;
+  const r = await fetch(`/api/scans/${currentScanId}/approve-all`, { method: 'POST' });
+  const out = await r.json();
+  if (!r.ok) { show($('altMsg'), out.error || 'Approve failed', 'bad'); return; }
+  show($('altMsg'), `${out.approved} descriptions approved. Download the fix file to apply them in Shopify admin.`, 'ok');
+  await loadFixes(currentScanId);
+  loadReport();
+};
+
+$('csvBtn').onclick = () => {
+  if (!currentScanId) return;
+  window.location.href = `/api/scans/${currentScanId}/fix-file.csv`;
+};
+
+async function loadFixes(scanId) {
+  const r = await fetch(`/api/scans/${scanId}`);
+  const out = await r.json();
+  if (!r.ok) { $('fixes').innerHTML = ''; return; }
+  const fixes = out.fixes || [];
+  if (!fixes.length) { $('fixes').innerHTML = '<p class="muted">No descriptions written yet for this scan.</p>'; return; }
+  $('fixes').innerHTML = `
+    <table><tr><th>Image</th><th>Before</th><th>Suggested description</th><th>Status</th><th></th></tr>
+    ${fixes.map(f => `<tr>
+      <td><a href="${esc(f.imageSrc)}" target="_blank" rel="noopener">${esc(f.imageSrc.split('/').pop() || f.imageSrc)}</a></td>
+      <td class="muted">${f.altBefore ? esc(f.altBefore) : '(none)'}</td>
+      <td>${f.altAfter ? esc(f.altAfter) : '<span class="muted">—</span>'}</td>
+      <td><span class="pill ${esc(f.status)}">${esc(f.status)}</span></td>
+      <td>${f.status === 'generated' ? `<button class="secondary" onclick="approveFix(${f.id})">Approve</button>` : ''}${f.status === 'approved' ? `<button class="secondary" onclick="markApplied(${f.id})">Mark applied</button>` : ''}</td>
+    </tr>`).join('')}</table>`;
+}
+
+async function approveFix(id) {
+  const r = await fetch(`/api/fixes/${id}/approve`, { method: 'POST' });
+  const out = await r.json();
+  if (!r.ok) { show($('altMsg'), out.error || 'Approve failed', 'bad'); return; }
+  await loadFixes(currentScanId);
+  loadReport();
+}
+
+async function markApplied(id) {
+  const r = await fetch(`/api/fixes/${id}/applied`, { method: 'POST' });
+  const out = await r.json();
+  if (!r.ok) { show($('altMsg'), out.error || 'Update failed', 'bad'); return; }
+  await loadFixes(currentScanId);
+  loadReport();
+}
+
+$('createPlanBtn').onclick = async () => {
+  $('createPlanBtn').disabled = true;
+  show($('payMsg'), 'Creating the plan in PayPal sandbox…');
+  try {
+    const r = await fetch('/api/paypal/create-plan', { method: 'POST' });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error || 'Plan creation failed');
+    show($('payMsg'), `Plan created in PayPal sandbox: ${out.planId}.`, 'ok');
+    await loadConfig();
+  } catch (e) { show($('payMsg'), e.message, 'bad'); }
+  finally { $('createPlanBtn').disabled = false; }
+};
+
+async function loadReport() {
+  const r = await fetch('/api/report');
+  const out = await r.json();
+  if (!r.ok) { $('report').innerHTML = ''; return; }
+  if (!out.report.length) { $('report').innerHTML = '<p class="muted">No scans yet. Run a scan above and it will appear here with its date.</p>'; return; }
+  $('report').innerHTML = out.report.map(s => {
+    const byStatus = {};
+    s.fixes.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
+    const fixSummary = Object.entries(byStatus).map(([k, v]) => `${v} ${k}`).join(', ') || 'no fixes yet';
+    return `<div class="status"><b>${esc(s.url)}</b> — ${new Date(s.scannedAt).toLocaleString()}<br>
+      ${s.totalImages} images · ${s.nullAlt} missing alt · ${s.emptyAlt} empty alt · ${s.violationCount} violation types<br>
+      Fixes: ${esc(fixSummary)}</div>`;
+  }).join('');
+}
+
+loadConfig();
+loadReport();
+</script>
+</body>
+</html>
